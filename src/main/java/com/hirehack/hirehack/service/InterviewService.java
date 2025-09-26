@@ -9,9 +9,9 @@ import com.hirehack.hirehack.repository.ChatMessageRepository;
 import com.hirehack.hirehack.repository.InterviewRepository;
 import com.hirehack.hirehack.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
@@ -30,11 +30,10 @@ public class InterviewService {
     @Transactional
     public InterviewResponseDto startNewInterview(InterviewRequestDto requestDto) {
         User user = userRepository.findByPhoneNumber(requestDto.getPhoneNumber())
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + requestDto.getPhoneNumber()));
+                .orElseThrow(() -> new EntityNotFoundException("User not found with phone number: " + requestDto.getPhoneNumber()));
 
         Interview interview = new Interview();
         interview.setUser(user);
-        // Assuming these new fields are now in InterviewRequestDto
         interview.setRole(requestDto.getRole());
         interview.setSkills(requestDto.getSkills());
         interview.setInterviewType(requestDto.getInterviewType());
@@ -42,7 +41,6 @@ public class InterviewService {
         interview.setStatus("STARTED");
         interview = interviewRepository.save(interview);
 
-        // Generate a much more detailed first question
         String firstQuestion = geminiService.generateInitialQuestion(
                 user,
                 interview.getRole(),
@@ -51,6 +49,7 @@ public class InterviewService {
         );
 
         saveChatMessage(interview, ChatMessage.SenderType.AI, firstQuestion);
+        
         InterviewResponseDto responseDto = new InterviewResponseDto();
         responseDto.setInterviewId(interview.getId());
         responseDto.setInitialQuestion(firstQuestion);
@@ -62,41 +61,69 @@ public class InterviewService {
         Interview interview = interviewRepository.findById(interviewId)
                 .orElseThrow(() -> new EntityNotFoundException("Interview not found with ID: " + interviewId));
 
-        // --- TIME CHECK LOGIC --- (This part is correct)
+        if ("COMPLETED".equals(interview.getStatus())) {
+            return "INTERVIEW_ENDED: This interview has already been completed.";
+        }
+
         long minutesElapsed = ChronoUnit.MINUTES.between(interview.getCreatedAt(), OffsetDateTime.now());
+
+        saveChatMessage(interview, ChatMessage.SenderType.USER, userMessage);
 
         if (minutesElapsed >= interview.getInterviewDurationMinutes()) {
             interview.setStatus("COMPLETED");
             interview.setEndedAt(OffsetDateTime.now());
             interviewRepository.save(interview);
-            saveChatMessage(interview, ChatMessage.SenderType.USER, userMessage);
+            
             String finalMessage = "Thank you for your time. The interview is now complete.";
             saveChatMessage(interview, ChatMessage.SenderType.AI, finalMessage);
             return "INTERVIEW_ENDED: " + finalMessage;
         }
-        // --- END OF TIME CHECK ---
 
-        // 1. Save the user's message
-        saveChatMessage(interview, ChatMessage.SenderType.USER, userMessage);
-
-        // 2. Get the entire chat history for context
         String chatHistory = getFormattedChatHistory(interviewId);
+        String resumeText = interview.getUser().getResumeText() != null ? interview.getUser().getResumeText() : "No resume was provided.";
 
-        // --- THIS IS THE CORRECTED PART ---
-        // 3. Generate the next question from Gemini using the FULL context
         String nextAiQuestion = geminiService.generateNextQuestion(
                 interview.getRole(),
                 interview.getSkills(),
                 interview.getInterviewType(),
-                interview.getUser().getResumeText(), // Pass the resume text
+                resumeText,
                 chatHistory
         );
-        // --- END OF CORRECTION ---
 
-        // 4. Save the AI's new message
         saveChatMessage(interview, ChatMessage.SenderType.AI, nextAiQuestion);
 
         return nextAiQuestion;
+    }
+
+    @Transactional
+    public String generateFeedback(Long interviewId) {
+        Interview interview = interviewRepository.findById(interviewId)
+                .orElseThrow(() -> new EntityNotFoundException("Interview not found with ID: " + interviewId));
+        
+        if (!"COMPLETED".equals(interview.getStatus())) {
+             interview.setStatus("COMPLETED");
+             interview.setEndedAt(OffsetDateTime.now());
+        }
+
+        User user = interview.getUser();
+        String chatHistory = getFormattedChatHistory(interviewId);
+        String resumeText = user.getResumeText() != null ? user.getResumeText() : "No resume was provided.";
+
+        String feedback = geminiService.generateFeedback(
+                chatHistory,
+                resumeText,
+                interview.getRole(),
+                interview.getSkills()
+        );
+
+        interview.setFeedback(feedback);
+        interviewRepository.save(interview);
+        return feedback;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Interview> getInterviewHistoryForUser(String phoneNumber) {
+        return interviewRepository.findByUserPhoneNumberOrderByCreatedAtDesc(phoneNumber);
     }
 
     private void saveChatMessage(Interview interview, ChatMessage.SenderType sender, String message) {
@@ -110,30 +137,7 @@ public class InterviewService {
     private String getFormattedChatHistory(Long interviewId) {
         List<ChatMessage> messages = chatMessageRepository.findByInterviewIdOrderByCreatedAtAsc(interviewId);
         return messages.stream()
-                .map(msg -> msg.getSenderType() + ": " + msg.getMessageText())
+                .map(msg -> msg.getSenderType().name() + ": " + msg.getMessageText())
                 .collect(Collectors.joining("\n"));
-    }
-
-    @Transactional
-    public String generateFeedback(Long interviewId) {
-        Interview interview = interviewRepository.findById(interviewId)
-                .orElseThrow(() -> new EntityNotFoundException("Interview not found: " + interviewId));
-        User user = interview.getUser();
-        String chatHistory = getFormattedChatHistory(interviewId);
-
-        String feedback = geminiService.generateFeedback(
-                chatHistory,
-                user.getResumeText(),
-                interview.getRole(),
-                interview.getSkills()
-        );
-
-        interview.setFeedback(feedback);
-        interviewRepository.save(interview);
-        return feedback;
-    }
-
-    public List<Interview> getInterviewHistoryForUser(String phoneNumber) {
-        return interviewRepository.findByUserPhoneNumberOrderByCreatedAtDesc(phoneNumber);
     }
 }

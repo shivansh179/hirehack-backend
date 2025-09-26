@@ -10,7 +10,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**") // Apply CORS to all /api/ endpoints
-                .allowedOrigins("http://localhost:3000") // The default URL for Next.js dev server
+                .allowedOrigins("http://localhost:3000", "http://localhost:3001") // Allow both Next.js dev server ports
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true);

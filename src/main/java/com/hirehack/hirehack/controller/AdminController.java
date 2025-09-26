@@ -55,4 +55,5 @@ public class AdminController {
         checkAdmin(phoneNumber);
         return ResponseEntity.ok(adminService.getAllInterviews());
     }
+
 }

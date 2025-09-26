@@ -2,6 +2,8 @@ package com.hirehack.hirehack.repository;
 
 import com.hirehack.hirehack.entity.Interview;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -25,9 +27,10 @@ public interface InterviewRepository extends JpaRepository<Interview, Long> {
     /**
      * Finds all interviews for a specific user, identified by their phone number.
      * Results are ordered by the creation date in descending order (newest first).
-     * Spring Data JPA writes the SQL for this automatically based on the method name.
+     * Uses a JOIN query to properly access the user's phone number.
      */
-    List<Interview> findByUserPhoneNumberOrderByCreatedAtDesc(String phoneNumber);
+    @Query("SELECT i FROM Interview i JOIN i.user u WHERE u.phoneNumber = :phoneNumber ORDER BY i.createdAt DESC")
+    List<Interview> findByUserPhoneNumberOrderByCreatedAtDesc(@Param("phoneNumber") String phoneNumber);
 
     /**
      * Counts how many interviews have a specific status (e.g., "COMPLETED").

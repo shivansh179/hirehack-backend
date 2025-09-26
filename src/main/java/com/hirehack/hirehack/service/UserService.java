@@ -8,10 +8,10 @@ import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -19,8 +19,8 @@ public class UserService {
 
     private final UserRepository userRepository;
 
+    @Transactional
     public User registerOrUpdateUser(UserDto userDto) {
-        // Find user by phone number, or create a new one
         User user = userRepository.findByPhoneNumber(userDto.getPhoneNumber())
                 .orElse(new User());
 
@@ -29,18 +29,23 @@ public class UserService {
         user.setProfession(userDto.getProfession());
         user.setYearsOfExperience(userDto.getYearsOfExperience());
 
+        if (user.getRole() == null) {
+            user.setRole(User.UserRole.USER);
+        }
+
         return userRepository.save(user);
     }
 
+    @Transactional(readOnly = true)
     public boolean doesUserExist(String phoneNumber) {
         return userRepository.findByPhoneNumber(phoneNumber).isPresent();
     }
 
+    @Transactional
     public void storeResume(String phoneNumber, MultipartFile file) throws IOException {
         User user = userRepository.findByPhoneNumber(phoneNumber)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + phoneNumber));
+                .orElseThrow(() -> new EntityNotFoundException("User not found with phone number: " + phoneNumber));
 
-        // Extract text from the PDF file
         try (PDDocument document = PDDocument.load(file.getInputStream())) {
             PDFTextStripper pdfStripper = new PDFTextStripper();
             String text = pdfStripper.getText(document);

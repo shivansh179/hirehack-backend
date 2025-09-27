@@ -54,7 +54,8 @@ public class OtpService implements OtpServiceInterface {
         // Send OTP via SMS
         try {
             String message = String.format("Your HireHack OTP is: %s. Valid for %d minutes.", otpCode, otpExpirationMinutes);
-            notificationService.sendSms(normalizedPhoneNumber, message);
+            log.error(message);
+//            notificationService.sendSms(normalizedPhoneNumber, message);
         } catch (Exception e) {
             log.error("Failed to send OTP SMS to {}", normalizedPhoneNumber, e);
             // Continue execution even if SMS fails - OTP is still generated

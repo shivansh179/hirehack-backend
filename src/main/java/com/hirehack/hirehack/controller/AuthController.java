@@ -41,13 +41,13 @@ public class AuthController {
         
         if (!isValidOtp) {
             return ResponseEntity.badRequest()
-                    .body(new OtpResponseDto("Invalid or expired OTP", null, false, null));
+                    .body(new OtpResponseDto("Invalid or expired OTP", null, false, null, null, null, null, null, null));
         }
         
         boolean userExists = otpService.userExists(verifyOtpRequest.getPhoneNumber());
         
         if (userExists) {
-            // User exists - return user details for login
+            // User exists - automatically sign them in and return authentication details
             User user = otpService.getUserByPhoneNumber(verifyOtpRequest.getPhoneNumber());
             UserDto userDto = UserDto.builder()
                     .phoneNumber(user.getPhoneNumber())
@@ -56,11 +56,26 @@ public class AuthController {
                     .yearsOfExperience(user.getYearsOfExperience())
                     .build();
             
+            // Create login request and authenticate user
+            LoginRequestDto loginRequest = LoginRequestDto.builder()
+                    .phoneNumber(verifyOtpRequest.getPhoneNumber())
+                    .build();
+            
+            AuthResponseDto authResponse = authService.login(loginRequest);
+            
+            // Clean up verified OTP after successful login
+            otpService.cleanupVerifiedOtps(verifyOtpRequest.getPhoneNumber());
+            
             return ResponseEntity.ok(new OtpResponseDto(
-                    "OTP verified successfully. User exists.",
+                    "OTP verified successfully. User signed in.",
                     "otp_verified",
                     true,
-                    userDto
+                    userDto,
+                    authResponse.getToken(),
+                    authResponse.getRefreshToken(),
+                    authResponse.getType(),
+                    authResponse.getUserId(),
+                    authResponse.getRole()
             ));
         } else {
             // User doesn't exist - return registration required
@@ -68,6 +83,11 @@ public class AuthController {
                     "OTP verified successfully. Registration required.",
                     "otp_verified",
                     false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
                     null
             ));
         }

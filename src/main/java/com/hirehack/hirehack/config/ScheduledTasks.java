@@ -13,14 +13,14 @@ public class ScheduledTasks {
 
     private final OtpService otpService;
 
-    @Scheduled(fixedRate = 300000) // Run every 5 minutes
-    public void cleanupExpiredOtps() {
-        try {
-            otpService.cleanupExpiredOtps();
-            log.debug("Expired OTPs cleaned up successfully");
-        } catch (Exception e) {
-            log.error("Error cleaning up expired OTPs", e);
-        }
-    }
+//    @Scheduled(fixedRate = 300000) // Run every 5 minutes
+//    public void cleanupExpiredOtps() {
+//        try {
+//            otpService.cleanupExpiredOtps();
+//            log.debug("Expired OTPs cleaned up successfully");
+//        } catch (Exception e) {
+//            log.error("Error cleaning up expired OTPs", e);
+//        }
+//    }
 }
 

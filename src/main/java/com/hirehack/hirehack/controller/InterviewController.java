@@ -4,9 +4,11 @@ import com.hirehack.hirehack.dto.ChatMessageDto;
 import com.hirehack.hirehack.dto.InterviewRequestDto;
 import com.hirehack.hirehack.dto.InterviewResponseDto;
 import com.hirehack.hirehack.entity.Interview;
+import com.hirehack.hirehack.entity.User;
 import com.hirehack.hirehack.service.InterviewService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,28 +22,32 @@ public class InterviewController {
     private final InterviewService interviewService;
 
     @PostMapping("/start")
-    public ResponseEntity<InterviewResponseDto> startInterview(@RequestBody InterviewRequestDto requestDto) {
-        InterviewResponseDto response = interviewService.startNewInterview(requestDto);
+    public ResponseEntity<InterviewResponseDto> startInterview(@RequestBody InterviewRequestDto requestDto, Authentication authentication) {
+        User currentUser = (User) authentication.getPrincipal();
+        InterviewResponseDto response = interviewService.startNewInterview(requestDto, currentUser.getId());
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{interviewId}/chat")
     public ResponseEntity<Map<String, String>> postChatMessage(
             @PathVariable Long interviewId,
-            @RequestBody ChatMessageDto chatMessageDto) {
-        String aiReply = interviewService.handleUserResponse(interviewId, chatMessageDto.getMessage());
-        // We return a simple JSON object like {"reply": "This is the AI's response."}
+            @RequestBody ChatMessageDto chatMessageDto,
+            Authentication authentication) {
+        User currentUser = (User) authentication.getPrincipal();
+        String aiReply = interviewService.handleUserResponse(interviewId, chatMessageDto.getMessage(), currentUser.getId());
         return ResponseEntity.ok(Map.of("reply", aiReply));
     }
 
     @PostMapping("/{interviewId}/generate-feedback")
-    public ResponseEntity<Map<String, String>> generateFeedback(@PathVariable Long interviewId) {
-        String feedback = interviewService.generateFeedback(interviewId);
+    public ResponseEntity<Map<String, String>> generateFeedback(@PathVariable Long interviewId, Authentication authentication) {
+        User currentUser = (User) authentication.getPrincipal();
+        String feedback = interviewService.generateFeedback(interviewId, currentUser.getId());
         return ResponseEntity.ok(Map.of("feedback", feedback));
     }
 
-    @GetMapping("/history/{phoneNumber}")
-    public ResponseEntity<List<Interview>> getInterviewHistory(@PathVariable String phoneNumber) {
-        return ResponseEntity.ok(interviewService.getInterviewHistoryForUser(phoneNumber));
+    @GetMapping("/history")
+    public ResponseEntity<List<Interview>> getInterviewHistory(Authentication authentication) {
+        User currentUser = (User) authentication.getPrincipal();
+        return ResponseEntity.ok(interviewService.getInterviewHistoryForUser(currentUser.getId()));
     }
 }

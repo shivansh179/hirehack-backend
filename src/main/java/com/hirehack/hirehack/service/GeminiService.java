@@ -2,6 +2,7 @@ package com.hirehack.hirehack.service;
 
 import com.hirehack.hirehack.dto.GeminiApiDto;
 import com.hirehack.hirehack.entity.User;
+import com.hirehack.hirehack.service.interfaces.AiInterviewServiceInterface;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -14,7 +15,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class GeminiService {
+public class GeminiService implements AiInterviewServiceInterface {
 
     private final RestTemplate restTemplate;
 

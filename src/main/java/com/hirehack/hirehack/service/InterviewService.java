@@ -5,9 +5,15 @@ import com.hirehack.hirehack.dto.InterviewResponseDto;
 import com.hirehack.hirehack.entity.ChatMessage;
 import com.hirehack.hirehack.entity.Interview;
 import com.hirehack.hirehack.entity.User;
+import com.hirehack.hirehack.factory.InterviewFactory;
+import com.hirehack.hirehack.observer.EventPublisher;
+import com.hirehack.hirehack.observer.InterviewCompletedEvent;
 import com.hirehack.hirehack.repository.ChatMessageRepository;
 import com.hirehack.hirehack.repository.InterviewRepository;
 import com.hirehack.hirehack.repository.UserRepository;
+import com.hirehack.hirehack.service.interfaces.InterviewServiceInterface;
+
+import java.util.Map;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,25 +26,21 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class InterviewService {
+public class InterviewService implements InterviewServiceInterface {
 
     private final UserRepository userRepository;
     private final InterviewRepository interviewRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final GeminiService geminiService;
+    private final InterviewFactory interviewFactory;
+    private final EventPublisher eventPublisher;
 
     @Transactional
-    public InterviewResponseDto startNewInterview(InterviewRequestDto requestDto) {
-        User user = userRepository.findByPhoneNumber(requestDto.getPhoneNumber())
-                .orElseThrow(() -> new EntityNotFoundException("User not found with phone number: " + requestDto.getPhoneNumber()));
+    public InterviewResponseDto startNewInterview(InterviewRequestDto requestDto, Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
 
-        Interview interview = new Interview();
-        interview.setUser(user);
-        interview.setRole(requestDto.getRole());
-        interview.setSkills(requestDto.getSkills());
-        interview.setInterviewType(requestDto.getInterviewType());
-        interview.setInterviewDurationMinutes(requestDto.getInterviewDurationMinutes());
-        interview.setStatus("STARTED");
+        Interview interview = interviewFactory.createInterviewFromRequest(requestDto, user);
         interview = interviewRepository.save(interview);
 
         String firstQuestion = geminiService.generateInitialQuestion(
@@ -57,9 +59,14 @@ public class InterviewService {
     }
 
     @Transactional
-    public String handleUserResponse(Long interviewId, String userMessage) {
+    public String handleUserResponse(Long interviewId, String userMessage, Long userId) {
         Interview interview = interviewRepository.findById(interviewId)
                 .orElseThrow(() -> new EntityNotFoundException("Interview not found with ID: " + interviewId));
+
+        // Verify that the interview belongs to the authenticated user
+        if (!interview.getUser().getId().equals(userId)) {
+            throw new EntityNotFoundException("Interview not found or access denied");
+        }
 
         if ("COMPLETED".equals(interview.getStatus())) {
             return "INTERVIEW_ENDED: This interview has already been completed.";
@@ -73,6 +80,13 @@ public class InterviewService {
             interview.setStatus("COMPLETED");
             interview.setEndedAt(OffsetDateTime.now());
             interviewRepository.save(interview);
+            
+            // Publish interview completion event
+            eventPublisher.publishEvent(new InterviewCompletedEvent(interview, Map.of(
+                    "completionReason", "TIME_LIMIT_REACHED",
+                    "durationMinutes", minutesElapsed,
+                    "timestamp", interview.getEndedAt()
+            )));
             
             String finalMessage = "Thank you for your time. The interview is now complete.";
             saveChatMessage(interview, ChatMessage.SenderType.AI, finalMessage);
@@ -96,13 +110,24 @@ public class InterviewService {
     }
 
     @Transactional
-    public String generateFeedback(Long interviewId) {
+    public String generateFeedback(Long interviewId, Long userId) {
         Interview interview = interviewRepository.findById(interviewId)
                 .orElseThrow(() -> new EntityNotFoundException("Interview not found with ID: " + interviewId));
+        
+        // Verify that the interview belongs to the authenticated user
+        if (!interview.getUser().getId().equals(userId)) {
+            throw new EntityNotFoundException("Interview not found or access denied");
+        }
         
         if (!"COMPLETED".equals(interview.getStatus())) {
              interview.setStatus("COMPLETED");
              interview.setEndedAt(OffsetDateTime.now());
+             
+             // Publish interview completion event
+             eventPublisher.publishEvent(new InterviewCompletedEvent(interview, Map.of(
+                     "completionReason", "MANUAL_COMPLETION",
+                     "timestamp", interview.getEndedAt()
+             )));
         }
 
         User user = interview.getUser();
@@ -122,8 +147,8 @@ public class InterviewService {
     }
 
     @Transactional(readOnly = true)
-    public List<Interview> getInterviewHistoryForUser(String phoneNumber) {
-        return interviewRepository.findByUserPhoneNumberOrderByCreatedAtDesc(phoneNumber);
+    public List<Interview> getInterviewHistoryForUser(Long userId) {
+        return interviewRepository.findByUserIdOrderByCreatedAtDesc(userId);
     }
 
     private void saveChatMessage(Interview interview, ChatMessage.SenderType sender, String message) {

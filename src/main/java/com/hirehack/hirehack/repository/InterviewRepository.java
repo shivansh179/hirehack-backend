@@ -33,6 +33,13 @@ public interface InterviewRepository extends JpaRepository<Interview, Long> {
     List<Interview> findByUserPhoneNumberOrderByCreatedAtDesc(@Param("phoneNumber") String phoneNumber);
 
     /**
+     * Finds all interviews for a specific user, identified by their user ID.
+     * Results are ordered by the creation date in descending order (newest first).
+     */
+    @Query("SELECT i FROM Interview i WHERE i.user.id = :userId ORDER BY i.createdAt DESC")
+    List<Interview> findByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId);
+
+    /**
      * Counts how many interviews have a specific status (e.g., "COMPLETED").
      * Spring Data JPA writes the "SELECT COUNT(*) ..." query for this.
      */
